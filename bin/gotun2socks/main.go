@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/yinghuocho/gotun2socks"
+	"github.com/missdeer/gotun2socks"
 )
 
 func main() {

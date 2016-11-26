@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"strings"
 
 	"github.com/missdeer/gotun2socks"
@@ -21,10 +20,8 @@ func main() {
 	flag.BoolVar(&enableDnsCache, "enable-dns-cache", false, "enable local dns cache if specified")
 	flag.Parse()
 
-	f, e := openTunDevice(tunDevice)
-	if e != nil {
-		log.Fatal(e)
-	}
-	tun := gotun2socks.New(f, localSocksAddr, strings.Split(dnsServers, ","), publicOnly, enableDnsCache)
+	t := New()
+	t.Open()
+	tun := gotun2socks.New(t.Fd, localSocksAddr, strings.Split(dnsServers, ","), publicOnly, enableDnsCache)
 	tun.Run()
 }

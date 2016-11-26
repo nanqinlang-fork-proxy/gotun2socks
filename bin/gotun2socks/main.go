@@ -1,8 +1,9 @@
 package main
 
 import (
-	"flag"
 	"strings"
+
+	flag "github.com/ogier/pflag"
 
 	"github.com/missdeer/gotun2socks"
 )

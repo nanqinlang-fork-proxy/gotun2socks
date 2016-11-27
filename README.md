@@ -4,6 +4,8 @@ A Golang implementation of tun2socks
 
 [![Build Status](https://secure.travis-ci.org/missdeer/gotun2socks.png)](https://travis-ci.org/missdeer/gotun2socks)
 
+[![wercker status](https://app.wercker.com/status/6c43597eba8359a74451ede438e98a31/m/master "wercker status")](https://app.wercker.com/project/byKey/6c43597eba8359a74451ede438e98a31)
+
 ## Usage
 
 See <a href="https://code.google.com/p/badvpn/wiki/tun2socks"> Tun2Socks Introduction </a> for how to create tun device and change routing table.

@@ -24,22 +24,21 @@ func (tun *Tun) Open() {
 	if err != nil {
 		log.Fatalf("[CRIT] Note: Cannot open TUN/TAP dev %s: %v", deviceFile, err)
 	}
-	tun.Fd = fd
 	ifr := make([]byte, 18)
 	ifr[17] = IFF_NO_PI
 	ifr[16] = IFF_TUN
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
-		uintptr(tun.Fd.Fd()), uintptr(TUNSETIFF),
+		uintptr(fd.Fd()), uintptr(TUNSETIFF),
 		uintptr(unsafe.Pointer(&ifr[0])))
 	if errno != 0 {
 		log.Fatalf("[CRIT] Cannot ioctl TUNSETIFF: %v", errno)
 	}
+	syscall.SetNonblock(int(fd.Fd()), false)
 
+	tun.Fd = fd
 	tun.actualName = string(ifr)
 	tun.actualName = tun.actualName[:strings.Index(tun.actualName, "\000")]
 	log.Printf("[INFO] TUN/TAP device %s opened.", tun.actualName)
-
-	syscall.SetNonblock(int(tun.Fd.Fd()), false)
 }
 
 func (tun *Tun) SetupAddress(addr, mask string) {

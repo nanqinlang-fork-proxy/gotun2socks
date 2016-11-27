@@ -2,6 +2,45 @@
 
 package tun
 
+import (
+	"fmt"
+	"log"
+	"os"
+	"syscall"
+	"unsafe"
+)
+
+func (tun *Tun) Open() {
+	dynamicOpened := false
+	dynamicName := ""
+	for i := 0; i < 16; i++ {
+		tunName := fmt.Sprintf("/dev/tun%d", i)
+		dynamicName = fmt.Sprintf("tun%d", i)
+		fd, err := os.OpenFile(tunName, os.O_RDWR, 0)
+		if err == nil {
+			ifr := make([]byte, 8)
+			_, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
+				uintptr(fd.Fd()), uintptr(TUNSIFHEAD),
+				uintptr(unsafe.Pointer(&ifr[0])))
+			if errno != 0 {
+				log.Fatalf("[CRIT] Cannot ioctl TUNSIFHEAD: %v", errno)
+			}
+
+			syscall.SetNonblock(int(fd.Fd()), false)
+			tun.Fd = fd
+			dynamicOpened = true
+			break
+		}
+		log.Printf("[WARN] Failed to open TUN/TAP device '%s': %v", dynamicName, err)
+	}
+	if !dynamicOpened {
+		log.Fatalf("[CRIT] Cannot allocate TUN/TAP device dynamically.")
+	}
+
+	tun.actualName = dynamicName
+	log.Printf("[INFO] TUN/TAP device %s opened.", tun.actualName)
+}
+
 // this is currently broken D:
 
 /*
@@ -107,41 +146,3 @@ void tundev_free(const char * name) {
 }
 
 */
-import "C"
-
-import (
-	"errors"
-)
-
-type tunDev struct {
-	fd C.int
-}
-
-func newTun(ifname, addr, dstaddr string, mtu int) (t tunDev, err error) {
-	name := C.tundev_open(&t.fd)
-
-	if t.fd == C.int(-1) {
-		err = errors.New("cannot open tun interface")
-	} else {
-		res := C.tundev_up(name, C.CString(addr), C.CString(dstaddr), C.int(mtu))
-		if res == C.int(-1) {
-			err = errors.New("cannot put up interface")
-			t.Close()
-		}
-	}
-	C.tundev_free(name)
-	return
-}
-
-// read from the tun device
-func (t *tunDev) Read(d []byte) (n int, err error) {
-	return fdRead(C.int(t.fd), d)
-}
-
-func (t *tunDev) Write(d []byte) (n int, err error) {
-	return fdWrite(C.int(t.fd), d)
-}
-
-func (t *tunDev) Close() {
-	C.tundev_close(t.fd)
-}

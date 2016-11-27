@@ -18,6 +18,7 @@ func (tun *Tun) Open() {
 		dynamicName = fmt.Sprintf("tun%d", i)
 		fd, err := os.OpenFile(tunName, os.O_RDWR, 0)
 		if err == nil {
+			syscall.SetNonblock(int(fd.Fd()), false)
 			tun.Fd = fd
 			dynamicOpened = true
 			break
@@ -30,7 +31,6 @@ func (tun *Tun) Open() {
 
 	tun.actualName = dynamicName
 	log.Printf("[INFO] TUN/TAP device %s opened.", tun.actualName)
-	syscall.SetNonblock(int(tun.Fd.Fd()), false)
 }
 
 func (tun *Tun) SetupAddress(addr, mask string) {

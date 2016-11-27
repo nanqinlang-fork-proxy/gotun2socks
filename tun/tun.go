@@ -1,12 +1,12 @@
 package tun
 
 import (
+	"io"
 	"log"
-	"os"
 )
 
 type Tun struct {
-	Fd         *os.File
+	Fd         io.ReadWriteCloser
 	actualName string
 	ReadCh     chan []byte
 	WriteCh    chan []byte

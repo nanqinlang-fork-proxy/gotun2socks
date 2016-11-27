@@ -30,7 +30,7 @@ build:
     - script:
         name: go get
         code: |
-          go get
+          go get -u -v -f github.com/ogier/pflag && go get -u -v -f github.com/yinghuocho/gosocks
 
     # Build the project
     - script:

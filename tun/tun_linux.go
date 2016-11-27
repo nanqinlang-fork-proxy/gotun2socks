@@ -1,4 +1,6 @@
-package main
+// +build linux
+
+package tun
 
 import (
 	"log"
@@ -23,7 +25,6 @@ func (tun *Tun) Open() {
 		log.Fatalf("[CRIT] Note: Cannot open TUN/TAP dev %s: %v", deviceFile, err)
 	}
 	tun.Fd = fd
-
 	ifr := make([]byte, 18)
 	ifr[17] = IFF_NO_PI
 	ifr[16] = IFF_TUN
@@ -37,6 +38,8 @@ func (tun *Tun) Open() {
 	tun.actualName = string(ifr)
 	tun.actualName = tun.actualName[:strings.Index(tun.actualName, "\000")]
 	log.Printf("[INFO] TUN/TAP device %s opened.", tun.actualName)
+
+	syscall.SetNonblock(int(tun.Fd.Fd()), false)
 }
 
 func (tun *Tun) SetupAddress(addr, mask string) {

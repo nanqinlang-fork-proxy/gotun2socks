@@ -1,4 +1,6 @@
-package main
+// +build windows
+
+package tun
 
 import (
 	// "encoding/binary"

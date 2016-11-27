@@ -1,11 +1,10 @@
 package gotun2socks
 
 import (
+	"io"
 	"log"
 	"net"
-	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/missdeer/gotun2socks/internal/packet"
@@ -28,7 +27,7 @@ var (
 )
 
 type Tun2Socks struct {
-	dev            *os.File
+	dev            io.ReadWriteCloser
 	localSocksAddr string
 	publicOnly     bool
 
@@ -54,7 +53,7 @@ func dialLocalSocks(localAddr string) (*gosocks.SocksConn, error) {
 	return localSocksDialer.Dial(localAddr)
 }
 
-func New(dev *os.File, localSocksAddr string, dnsServers []string, publicOnly bool, enableDnsCache bool) *Tun2Socks {
+func New(dev io.ReadWriteCloser, localSocksAddr string, dnsServers []string, publicOnly bool, enableDnsCache bool) *Tun2Socks {
 	t2s := &Tun2Socks{
 		dev:             dev,
 		localSocksAddr:  localSocksAddr,
@@ -81,21 +80,19 @@ func (t2s *Tun2Socks) Stop() {
 	t2s.dev.Close()
 
 	t2s.tcpConnTrackLock.Lock()
-	defer t2s.tcpConnTrackLock.Unlock()
 	for _, tcpTrack := range t2s.tcpConnTrackMap {
 		close(tcpTrack.quitByOther)
 	}
+	t2s.tcpConnTrackLock.Unlock()
 
 	t2s.udpConnTrackLock.Lock()
-	defer t2s.udpConnTrackLock.Unlock()
 	for _, udpTrack := range t2s.udpConnTrackMap {
 		close(udpTrack.quitByOther)
 	}
+	t2s.udpConnTrackLock.Unlock()
 }
 
 func (t2s *Tun2Socks) Run() {
-	syscall.SetNonblock(int(t2s.dev.Fd()), false)
-
 	// writer
 	go func() {
 		for {

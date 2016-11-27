@@ -1,8 +1,6 @@
 // +build freebsd
-// tun_freebsd.go -- tun interface with cgo for linux / bsd
-//
 
-package main
+package tun
 
 // this is currently broken D:
 

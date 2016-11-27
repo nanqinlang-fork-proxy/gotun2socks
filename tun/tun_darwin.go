@@ -1,10 +1,13 @@
-package main
+// +build darwin
+
+package tun
 
 import (
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
 func (tun *Tun) Open() {
@@ -27,6 +30,7 @@ func (tun *Tun) Open() {
 
 	tun.actualName = dynamicName
 	log.Printf("[INFO] TUN/TAP device %s opened.", tun.actualName)
+	syscall.SetNonblock(int(tun.Fd.Fd()), false)
 }
 
 func (tun *Tun) SetupAddress(addr, mask string) {

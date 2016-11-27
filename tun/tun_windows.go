@@ -22,22 +22,18 @@ var (
 	TAP_IOCTL_GET_MTU          = tapControlCode(3, 0)
 	TAP_IOCTL_SET_MEDIA_STATUS = tapControlCode(6, 0)
 	TAP_IOCTL_CONFIG_TUN       = tapControlCode(10, 0)
+	mtu                        = 1500
 )
 
-type tun struct {
-	mtu        int
-	devicePath string
-	fd         syscall.Handle
-}
+type tun syscall.Handle
 
 func openTunTap(addr net.IP, network net.IP, mask net.IP) (*tun, error) {
-	t := new(tun)
 	id, err := getTuntapComponentID()
 	if err != nil {
 		return nil, err
 	}
-	t.devicePath = fmt.Sprintf(`\\.\Global\%s.tap`, id)
-	name := syscall.StringToUTF16(t.devicePath)
+	devicePath := fmt.Sprintf(`\\.\Global\%s.tap`, id)
+	name := syscall.StringToUTF16(devicePath)
 	tuntap, err := syscall.CreateFile(
 		&name[0],
 		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
@@ -83,7 +79,6 @@ func openTunTap(addr net.IP, network net.IP, mask net.IP) (*tun, error) {
 	// 	return nil, err
 	// }
 	// mtu := binary.LittleEndian.Uint32(umtu)
-	mtu := 1500
 
 	// set connect.
 	inBuffer := []byte("\x01\x00\x00\x00")
@@ -98,9 +93,9 @@ func openTunTap(addr net.IP, network net.IP, mask net.IP) (*tun, error) {
 		nil); err != nil {
 		return nil, err
 	}
-	t.fd = tuntap
-	t.mtu = int(mtu)
-	return t, nil
+	var t tun
+	t = tun(tuntap)
+	return &t, nil
 }
 
 func getTuntapComponentID() (string, error) {
@@ -153,10 +148,10 @@ func (t tun) Read(ch []byte) (n int, err error) {
 		return
 	}
 	overlappedRx.HEvent = syscall.Handle(hevent)
-	buf := make([]byte, t.mtu)
+	buf := make([]byte, mtu)
 	var l uint32
 
-	if err := syscall.ReadFile(t.fd, buf, &l, &overlappedRx); err != nil {
+	if err := syscall.ReadFile(syscall.Handle(t), buf, &l, &overlappedRx); err != nil {
 	}
 	if _, err := syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
 		fmt.Println(err)
@@ -186,14 +181,14 @@ func (t tun) Write(ch []byte) (n int, err error) {
 	}
 	overlappedRx.HEvent = syscall.Handle(hevent)
 	var l uint32
-	syscall.WriteFile(t.fd, ch, &l, &overlappedRx)
+	syscall.WriteFile(syscall.Handle(t), ch, &l, &overlappedRx)
 	syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
 	overlappedRx.Offset += uint32(len(ch))
 	return len(ch), nil
 }
 
 func (t tun) Close() error {
-	return syscall.Close(t.fd)
+	return syscall.Close(syscall.Handle(t))
 }
 
 func unicodeTostring(src []byte) string {
@@ -206,17 +201,17 @@ func unicodeTostring(src []byte) string {
 	return string(dst)
 }
 
-func ctl_code(deviceType, function, method, access uint32) uint32 {
+func ctlCode(deviceType, function, method, access uint32) uint32 {
 	return (deviceType << 16) | (access << 14) | (function << 2) | method
 }
 
 func tapControlCode(request, method uint32) uint32 {
-	return ctl_code(34, request, method, 0)
+	return ctlCode(34, request, method, 0)
 }
 
 func (tun *Tun) Open() {
-	_, e := openTunTap(net.ParseIP("10.1.0.2"), net.ParseIP("10.1.0.1"), net.ParseIP("255.255.255.0"))
+	t, e := openTunTap(net.ParseIP("10.1.0.2"), net.ParseIP("10.1.0.1"), net.ParseIP("255.255.255.0"))
 	if e == nil {
-		// tun.Fd = (*t).(io.ReadWriteCloser)
+		tun.Fd = *t
 	}
 }

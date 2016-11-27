@@ -10,6 +10,11 @@ import (
 	"unsafe"
 )
 
+const (
+	TUNSIFHEAD = 2147775584
+	TUNGIFHEAD = 1074033761
+)
+
 func (tun *Tun) Open() {
 	dynamicOpened := false
 	dynamicName := ""

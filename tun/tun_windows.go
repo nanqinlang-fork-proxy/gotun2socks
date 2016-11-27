@@ -19,25 +19,25 @@ const (
 )
 
 var (
-	TAP_IOCTL_GET_MTU          = tap_control_code(3, 0)
-	TAP_IOCTL_SET_MEDIA_STATUS = tap_control_code(6, 0)
-	TAP_IOCTL_CONFIG_TUN       = tap_control_code(10, 0)
+	TAP_IOCTL_GET_MTU          = tapControlCode(3, 0)
+	TAP_IOCTL_SET_MEDIA_STATUS = tapControlCode(6, 0)
+	TAP_IOCTL_CONFIG_TUN       = tapControlCode(10, 0)
 )
 
 type tun struct {
-	mtu         int
-	device_path string
-	fd          syscall.Handle
+	mtu        int
+	devicePath string
+	fd         syscall.Handle
 }
 
-func OpenTunTap(addr net.IP, network net.IP, mask net.IP) (Tun, error) {
+func openTunTap(addr net.IP, network net.IP, mask net.IP) (*tun, error) {
 	t := new(tun)
-	id, err := getTuntapComponentId()
+	id, err := getTuntapComponentID()
 	if err != nil {
 		return nil, err
 	}
-	t.device_path = fmt.Sprintf(`\\.\Global\%s.tap`, id)
-	name := syscall.StringToUTF16(t.device_path)
+	t.devicePath = fmt.Sprintf(`\\.\Global\%s.tap`, id)
+	name := syscall.StringToUTF16(t.devicePath)
 	tuntap, err := syscall.CreateFile(
 		&name[0],
 		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
@@ -51,7 +51,7 @@ func OpenTunTap(addr net.IP, network net.IP, mask net.IP) (Tun, error) {
 		return nil, err
 	}
 	var returnLen uint32
-	var configTunParam []byte = append(addr.To4(), network.To4()...)
+	configTunParam := append(addr.To4(), network.To4()...)
 	configTunParam = append(configTunParam, mask.To4()...)
 	fmt.Println(configTunParam)
 	//configTunParam = []byte{10, 0, 0, 1, 10, 0, 0, 0, 255, 255, 255, 0}
@@ -103,7 +103,7 @@ func OpenTunTap(addr net.IP, network net.IP, mask net.IP) (Tun, error) {
 	return t, nil
 }
 
-func getTuntapComponentId() (string, error) {
+func getTuntapComponentID() (string, error) {
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE,
 		ADAPTER_KEY,
 		registry.ENUMERATE_SUB_KEYS|registry.QUERY_VALUE)
@@ -126,26 +126,26 @@ func getTuntapComponentId() (string, error) {
 	return "", fmt.Errorf("Not Found")
 
 }
-func matchKey(zones registry.Key, kname string, componentId string) (string, error) {
+func matchKey(zones registry.Key, kname string, componentID string) (string, error) {
 	k, err := registry.OpenKey(zones, kname, registry.READ)
 	if err != nil {
 		return "", err
 	}
 	defer k.Close()
 
-	cId, _, err := k.GetStringValue("ComponentId")
-	if cId == componentId {
-		netCfgInstanceId, _, err := k.GetStringValue("NetCfgInstanceId")
+	cID, _, err := k.GetStringValue("ComponentId")
+	if cID == componentID {
+		netCfgInstanceID, _, err := k.GetStringValue("NetCfgInstanceId")
 		if err != nil {
 			return "", err
 		}
-		return netCfgInstanceId, nil
+		return netCfgInstanceID, nil
 
 	}
 	return "", fmt.Errorf("ComponentId != componentId")
 }
 
-func (t *tun) Read(ch chan []byte) (err error) {
+func (t tun) Read(ch []byte) (n int, err error) {
 	overlappedRx := syscall.Overlapped{}
 	var hevent windows.Handle
 	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
@@ -155,29 +155,29 @@ func (t *tun) Read(ch chan []byte) (err error) {
 	overlappedRx.HEvent = syscall.Handle(hevent)
 	buf := make([]byte, t.mtu)
 	var l uint32
-	for {
-		if err := syscall.ReadFile(t.fd, buf, &l, &overlappedRx); err != nil {
-		}
-		if _, err := syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
-			fmt.Println(err)
-		}
-		//overlappedRx.Offset += l
-		totalLen := overlappedRx.InternalHigh
-		/*switch buf[0] & 0xf0 {
-		  case 0x40:
-		      totalLen = 256 * int(buf[2]) + int(buf[3])
-		  case 0x60:
-		      continue
-		      totalLen = 256 * int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
-		  }*/
-		//fmt.Println("read data", buf[:totalLen])
-		send := make([]byte, totalLen)
-		copy(send, buf)
-		ch <- send
+
+	if err := syscall.ReadFile(t.fd, buf, &l, &overlappedRx); err != nil {
 	}
+	if _, err := syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE); err != nil {
+		fmt.Println(err)
+	}
+	//overlappedRx.Offset += l
+	totalLen := overlappedRx.InternalHigh
+	/*switch buf[0] & 0xf0 {
+	  case 0x40:
+	      totalLen = 256 * int(buf[2]) + int(buf[3])
+	  case 0x60:
+	      continue
+	      totalLen = 256 * int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
+	  }*/
+	//fmt.Println("read data", buf[:totalLen])
+	send := make([]byte, totalLen)
+	copy(send, buf)
+	copy(ch, buf)
+	return int(totalLen), nil
 }
 
-func (t *tun) Write(ch chan []byte) (err error) {
+func (t tun) Write(ch []byte) (n int, err error) {
 	overlappedRx := syscall.Overlapped{}
 	var hevent windows.Handle
 	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
@@ -185,23 +185,19 @@ func (t *tun) Write(ch chan []byte) (err error) {
 		return
 	}
 	overlappedRx.HEvent = syscall.Handle(hevent)
-	for {
-		select {
-		case data := <-ch:
-			var l uint32
-			syscall.WriteFile(t.fd, data, &l, &overlappedRx)
-			syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
-			overlappedRx.Offset += uint32(len(data))
-		}
-	}
+	var l uint32
+	syscall.WriteFile(t.fd, ch, &l, &overlappedRx)
+	syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
+	overlappedRx.Offset += uint32(len(ch))
+	return len(ch), nil
 }
 
-func (t *tun) Close() error {
+func (t tun) Close() error {
 	return syscall.Close(t.fd)
 }
 
 func unicodeTostring(src []byte) string {
-	dst := make([]byte, 0)
+	var dst []byte
 	for _, ch := range src {
 		if ch != byte(0) {
 			dst = append(dst, ch)
@@ -210,10 +206,17 @@ func unicodeTostring(src []byte) string {
 	return string(dst)
 }
 
-func ctl_code(device_type, function, method, access uint32) uint32 {
-	return (device_type << 16) | (access << 14) | (function << 2) | method
+func ctl_code(deviceType, function, method, access uint32) uint32 {
+	return (deviceType << 16) | (access << 14) | (function << 2) | method
 }
 
-func tap_control_code(request, method uint32) uint32 {
+func tapControlCode(request, method uint32) uint32 {
 	return ctl_code(34, request, method, 0)
+}
+
+func (tun *Tun) Open() {
+	_, e := openTunTap(net.ParseIP("10.1.0.2"), net.ParseIP("10.1.0.1"), net.ParseIP("255.255.255.0"))
+	if e == nil {
+		// tun.Fd = (*t).(io.ReadWriteCloser)
+	}
 }

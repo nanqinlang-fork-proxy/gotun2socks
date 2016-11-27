@@ -2,6 +2,8 @@
 
 A Golang implementation of tun2socks
 
+[![Build Status](https://secure.travis-ci.org/missdeer/gotun2socks.png)](https://travis-ci.org/missdeer/gotun2socks)
+
 ## Usage
 
 See <a href="https://code.google.com/p/badvpn/wiki/tun2socks"> Tun2Socks Introduction </a> for how to create tun device and change routing table.
@@ -16,4 +18,3 @@ This implementation forwards UDP using standard SOCKS5 UDP request/reply. Thus t
 - https://github.com/google/gopacket
 - https://github.com/ambrop72/badvpn/
 - https://github.com/songgao/water
-

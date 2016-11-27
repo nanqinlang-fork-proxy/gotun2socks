@@ -1,0 +1,12 @@
+language: go
+go:
+  - 1.7.3
+  - tip
+script:
+  - go build .
+  - cd bin/gotun2socks && go build .
+env:
+  global:
+    - GITHUB_REPO: missdeer/gotun2socks
+    - GIT_NAME: missdeer
+    - GIT_EMAIL: missdeer@dfordsoft.com

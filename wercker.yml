@@ -30,7 +30,9 @@ build:
     - script:
         name: go get
         code: |
-          go get -u -v -f github.com/ogier/pflag && go get -u -v -f github.com/yinghuocho/gosocks
+          go get -u -v -f github.com/ogier/pflag
+          go get -u -v -f github.com/yinghuocho/gosocks
+          go get -u -v -f github.com/miekg/dns
 
     # Build the project
     - script:

@@ -32,7 +32,6 @@ type Tun2Socks struct {
 	publicOnly     bool
 
 	writerStopCh chan bool
-	readerStopCh chan bool
 	writeCh      chan interface{}
 
 	tcpConnTrackLock sync.Mutex
@@ -43,6 +42,8 @@ type Tun2Socks struct {
 
 	dnsServers []string
 	cache      *dnsCache
+
+	wg sync.WaitGroup
 }
 
 func isPrivate(ip net.IP) bool {
@@ -59,7 +60,6 @@ func New(dev io.ReadWriteCloser, localSocksAddr string, dnsServers []string, pub
 		localSocksAddr:  localSocksAddr,
 		publicOnly:      publicOnly,
 		writerStopCh:    make(chan bool, 10),
-		readerStopCh:    make(chan bool, 10),
 		writeCh:         make(chan interface{}, 10000),
 		tcpConnTrackMap: make(map[string]*tcpConnTrack),
 		udpConnTrackMap: make(map[string]*udpConnTrack),
@@ -74,27 +74,28 @@ func New(dev io.ReadWriteCloser, localSocksAddr string, dnsServers []string, pub
 }
 
 func (t2s *Tun2Socks) Stop() {
-	t2s.readerStopCh <- true
 	t2s.writerStopCh <- true
-
 	t2s.dev.Close()
 
 	t2s.tcpConnTrackLock.Lock()
+	defer t2s.tcpConnTrackLock.Unlock()
 	for _, tcpTrack := range t2s.tcpConnTrackMap {
 		close(tcpTrack.quitByOther)
 	}
-	t2s.tcpConnTrackLock.Unlock()
 
 	t2s.udpConnTrackLock.Lock()
+	defer t2s.udpConnTrackLock.Unlock()
 	for _, udpTrack := range t2s.udpConnTrackMap {
 		close(udpTrack.quitByOther)
 	}
-	t2s.udpConnTrackLock.Unlock()
+	t2s.wg.Wait()
 }
 
 func (t2s *Tun2Socks) Run() {
 	// writer
 	go func() {
+		t2s.wg.Add(1)
+		defer t2s.wg.Done()
 		for {
 			select {
 			case pkt := <-t2s.writeCh:
@@ -107,6 +108,10 @@ func (t2s *Tun2Socks) Run() {
 					udp := pkt.(*udpPacket)
 					t2s.dev.Write(udp.wire)
 					releaseUDPPacket(udp)
+				case *ipPacket:
+					ip := pkt.(*ipPacket)
+					t2s.dev.Write(ip.wire)
+					releaseIPPacket(ip)
 				}
 			case <-t2s.writerStopCh:
 				log.Printf("quit tun2socks writer")
@@ -120,53 +125,61 @@ func (t2s *Tun2Socks) Run() {
 	var ip packet.IPv4
 	var tcp packet.TCP
 	var udp packet.UDP
+
+	t2s.wg.Add(1)
+	defer t2s.wg.Done()
 	for {
-		select {
-		case <-t2s.readerStopCh:
-			log.Printf("quit tun2socks reader")
+		n, e := t2s.dev.Read(buf[:])
+		if e != nil {
+			// TODO: stop at critical error
+			log.Printf("read packet error: %s", e)
 			return
-		default:
-			n, e := t2s.dev.Read(buf[:])
-			if e != nil {
-				// TODO: stop at critical error
-				log.Printf("read packet error: %s", e)
-				return
-			}
-			e = packet.ParseIPv4(buf[:n], &ip)
-			if e != nil {
-				log.Printf("error to parse IPv4: %s", e)
+		}
+		data := buf[:n]
+		e = packet.ParseIPv4(data, &ip)
+		if e != nil {
+			log.Printf("error to parse IPv4: %s", e)
+			continue
+		}
+		if t2s.publicOnly {
+			if !ip.DstIP.IsGlobalUnicast() {
 				continue
 			}
-			if t2s.publicOnly {
-				if !ip.DstIP.IsGlobalUnicast() {
-					continue
-				}
-				if isPrivate(ip.DstIP) {
-					continue
-				}
+			if isPrivate(ip.DstIP) {
+				continue
 			}
+		}
 
-			switch ip.Protocol {
-			case packet.IPProtocolTCP:
-				e = packet.ParseTCP(ip.Payload, &tcp)
-				if e != nil {
-					log.Printf("error to parse TCP: %s", e)
-					continue
-				}
-				t2s.tcp(buf[:n], &ip, &tcp)
-
-			case packet.IPProtocolUDP:
-				e = packet.ParseUDP(ip.Payload, &udp)
-				if e != nil {
-					log.Printf("error to parse UDP: %s", e)
-					continue
-				}
-				t2s.udp(buf[:n], &ip, &udp)
-
-			default:
-				// Unsupported packets
-				log.Printf("Unsupported packet: protocol %d", ip.Protocol)
+		if ip.Flags&0x1 != 0 || ip.FragOffset != 0 {
+			last, pkt, raw := procFragment(&ip, data)
+			if last {
+				ip = *pkt
+				data = raw
+			} else {
+				continue
 			}
+		}
+
+		switch ip.Protocol {
+		case packet.IPProtocolTCP:
+			e = packet.ParseTCP(ip.Payload, &tcp)
+			if e != nil {
+				log.Printf("error to parse TCP: %s", e)
+				continue
+			}
+			t2s.tcp(data, &ip, &tcp)
+
+		case packet.IPProtocolUDP:
+			e = packet.ParseUDP(ip.Payload, &udp)
+			if e != nil {
+				log.Printf("error to parse UDP: %s", e)
+				continue
+			}
+			t2s.udp(data, &ip, &udp)
+
+		default:
+			// Unsupported packets
+			log.Printf("Unsupported packet: protocol %d", ip.Protocol)
 		}
 	}
 }
